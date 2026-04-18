@@ -1,0 +1,27 @@
+SCREEN_W, SCREEN_H = 800, 600
+FPS            = 60
+GRAVITY        = 0.5
+JUMP_VEL       = -13
+PLAYER_SPEED   = 4
+BULLET_SPEED   = 8
+SHOOT_COOLDOWN = 300
+BANNER_FRAMES  = FPS * 2
+
+BLACK          = (0,   0,   0)
+PLATFORM_COLOR = (70,  80,  100)
+PLATFORM_SHINE = (100, 115, 140)
+PLAYER_COLOR   = (255, 120, 80)
+ENEMY_COLOR    = (220, 40,  40)
+BULLET_COLOR   = (255, 230, 50)
+BULLET_INNER   = (255, 255, 200)
+TEXT_COLOR     = (240, 240, 240)
+PORTAL_COLOR   = (80,  255, 180)
+PORTAL_INNER   = (200, 255, 230)
+HINT_COLOR     = (120, 130, 150)
+DIM_COLOR      = (160, 170, 200)
+
+WELCOME  = "welcome"
+BANNER   = "banner"
+PLAYING  = "playing"
+GAMEOVER = "gameover"
+VICTORY  = "victory"
