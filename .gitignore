@@ -31,3 +31,6 @@ htmlcov/
 
 # Claude local
 .claude/
+
+# Game state
+save.json

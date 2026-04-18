@@ -30,7 +30,10 @@ from world    import (
 from hud import (
     draw_hud, draw_welcome, draw_area_banner,
     draw_game_over, draw_victory, draw_minimap,
-    draw_hp, draw_inventory,
+    draw_hp, draw_inventory, draw_save_toast,
+)
+from save import (
+    has_save, save_game, load_game, apply_save, delete_save,
 )
 
 AREA_BANNER_FRAMES = int(_FPS * 1.5)
@@ -57,6 +60,7 @@ class GameWorld:
     collected:  set            = field(default_factory=set)
     score:      int            = 0
     area_timer: int            = AREA_BANNER_FRAMES
+    save_toast: int            = 0
 
     def allow_edges(self) -> dict[str, bool]:
         return {d.value: neighbor(self.coord, d) is not None for d in Direction}
@@ -84,6 +88,30 @@ def new_world() -> GameWorld:
         decor=decor, items=items, portal=portal,
         visited={START_COORD}, collected=set(),
     )
+
+
+def _refresh_area(gw: GameWorld) -> None:
+    """Re-spawn the current area (used after loading a save)."""
+    plats, enemies, bg, decor, items, portal = _load_area(
+        gw.coord, collected=gw.collected)
+    gw.platforms = plats
+    gw.enemies   = enemies
+    gw.bg_color  = bg
+    gw.decor     = decor
+    gw.items     = items
+    gw.portal    = portal
+    gw.area_timer = AREA_BANNER_FRAMES
+
+
+def load_saved_world() -> GameWorld | None:
+    """Try to build a GameWorld from a save file. Returns None if no save."""
+    data = load_game()
+    if data is None:
+        return None
+    gw = new_world()
+    apply_save(data, gw)
+    _refresh_area(gw)
+    return gw
 
 
 def transition(gw: GameWorld, direction: str) -> None:
@@ -150,28 +178,41 @@ def _tick_playing(gw: GameWorld) -> GameState | None:
         gw.portal.update()
         if gw.player.rect.colliderect(gw.portal.rect):
             gw.score += 50
+            delete_save()
             return VICTORY
 
     if gw.area_timer > 0:
         gw.area_timer -= 1
+    if gw.save_toast > 0:
+        gw.save_toast -= 1
     return None
+
+
+SAVE_TOAST_FRAMES = 90
 
 
 def _handle_key(event, state: GameState, gw: GameWorld) -> tuple[GameState, GameWorld]:
     match state:
         case GameState.WELCOME:
+            if event.key == pygame.K_c and (loaded := load_saved_world()) is not None:
+                return GameState.PLAYING, loaded
             return GameState.PLAYING, gw
         case GameState.PLAYING:
             if event.key in (pygame.K_UP, pygame.K_w):
                 gw.player.jump()
             elif event.key == pygame.K_f:
                 gw.player.shoot()
+            elif event.key == pygame.K_s:
+                save_game(gw)
+                gw.save_toast = SAVE_TOAST_FRAMES
             elif (kind := ITEM_HOTKEY_MAP.get(event.key)) is not None:
                 gw.player.use_item(kind)
             return state, gw
         case GameState.GAMEOVER | GameState.VICTORY:
             if event.key == pygame.K_r:
                 return GameState.PLAYING, new_world()
+            if event.key == pygame.K_c and (loaded := load_saved_world()) is not None:
+                return GameState.PLAYING, loaded
             if event.key == pygame.K_ESCAPE:
                 pygame.quit(); sys.exit()
             return state, gw
@@ -200,16 +241,18 @@ def _render(screen, gw: GameWorld, state: GameState,
         if gw.area_timer > 0 and state == GameState.PLAYING:
             draw_area_banner(screen, small_font,
                              AREAS[gw.coord].name, gw.area_timer)
+        if gw.save_toast > 0:
+            draw_save_toast(screen, small_font, gw.save_toast)
 
     match state:
         case GameState.WELCOME:
             for enemy in gw.enemies:
                 enemy.draw(screen)
             gw.player.draw(screen)
-            draw_welcome(screen, big_font, small_font)
+            draw_welcome(screen, big_font, small_font, has_save=has_save())
         case GameState.GAMEOVER:
             draw_game_over(screen, big_font, small_font,
-                           gw.score, AREAS[gw.coord].name)
+                           gw.score, AREAS[gw.coord].name, has_save=has_save())
         case GameState.VICTORY:
             draw_victory(screen, big_font, small_font, gw.score)
 

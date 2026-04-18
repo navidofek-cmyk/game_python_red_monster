@@ -120,21 +120,33 @@ def draw_inventory(surface, font, inventory, player) -> None:
                                  True, (255, 210, 80)), (x0, info_y))
 
 
-def draw_welcome(surface, big_font, small_font):
+def draw_save_toast(surface, font, timer: int) -> None:
+    alpha = min(255, timer * 4)
+    text  = font.render("Game saved — press C on welcome to continue", True, TEXT_COLOR)
+    banner = pygame.Surface((text.get_width() + 24, text.get_height() + 12), pygame.SRCALPHA)
+    banner.fill((0, 80, 40, min(200, alpha)))
+    banner.blit(text, (12, 6))
+    banner.set_alpha(alpha)
+    surface.blit(banner, (SCREEN_W // 2 - banner.get_width() // 2, SCREEN_H - 90))
+
+
+def draw_welcome(surface, big_font, small_font, has_save: bool = False):
     _draw_overlay(surface, 200)
-    _blit_centered(surface, big_font.render("Journey of Mosta", True, PLAYER_COLOR), 110)
+    _blit_centered(surface, big_font.render("Journey of Mosta", True, PLAYER_COLOR), 100)
     _blit_centered(surface, small_font.render(
-        "Your peaceful meadow is lost in shadow. Climb through swamp,", True, TEXT_COLOR), 200)
+        "Your peaceful meadow is lost in shadow. Climb through swamp,", True, TEXT_COLOR), 190)
     _blit_centered(surface, small_font.render(
-        "forest, caves and mountains to reach the Volcano Altar.", True, TEXT_COLOR), 230)
+        "forest, caves and mountains to reach the Volcano Altar.", True, TEXT_COLOR), 220)
     _blit_centered(surface, small_font.render(
-        "Beware the red monsters — they patrol, chase and jump.", True, DIM_COLOR), 270)
+        "Beware the red monsters — they patrol, chase and jump.", True, DIM_COLOR), 260)
     _blit_centered(surface, small_font.render(
-        "You have 3 HP — pick up potions to heal.", True, DIM_COLOR), 300)
+        "You have 3 HP — pick up potions to heal.", True, DIM_COLOR), 290)
     _blit_centered(surface, small_font.render(
-        "←→ move   ↑/W jump   F shoot   1=potion  2=speed  3=jump", True, HINT_COLOR), 350)
-    _blit_centered(surface, small_font.render(
-        "Press any key to begin", True, HINT_COLOR), 380)
+        "←→ move   ↑/W jump   F shoot   1=potion  2=speed  3=jump   S=save",
+        True, HINT_COLOR), 340)
+    start_line = "C = continue saved game   |   any other key = new game" if has_save \
+        else "Press any key to begin"
+    _blit_centered(surface, small_font.render(start_line, True, HINT_COLOR), 380)
     preview = pygame.Rect(SCREEN_W // 2 - 20, 420, 40, 30)
     img = SPRITES.get("player")
     if img:
@@ -143,11 +155,16 @@ def draw_welcome(surface, big_font, small_font):
         draw_monster(surface, preview, PLAYER_COLOR)
 
 
-def draw_game_over(surface, big_font, small_font, score, area_name):
+def draw_game_over(surface, big_font, small_font, score, area_name,
+                   has_save: bool = False):
+    lines = [(f"Score: {score}   |   Fell in: {area_name}", TEXT_COLOR)]
+    if has_save:
+        lines.append(("R = new game   |   C = continue save   |   ESC = quit",
+                      DIM_COLOR))
+    else:
+        lines.append(("R = restart   |   ESC = quit", DIM_COLOR))
     _draw_end_screen(surface, big_font, small_font,
-                     "GAME OVER", ENEMY_COLOR,
-                     [(f"Score: {score}   |   Fell in: {area_name}", TEXT_COLOR),
-                      ("R = restart   |   ESC = quit",               DIM_COLOR)])
+                     "GAME OVER", ENEMY_COLOR, lines)
 
 
 def draw_victory(surface, big_font, small_font, score):
