@@ -384,3 +384,134 @@ class Enemy(PhysicsBody):
             surface.blit(img, self.rect)
         else:
             draw_monster(surface, self.rect, ENEMY_COLOR, self.anim_frame)
+
+
+# --- Boss ---------------------------------------------------------------------
+class BossPhase(str):
+    """Plain string labels so they're easy to show in the HUD."""
+    CALM = "CALM"
+    HUNT = "HUNT"
+    RAGE = "RAGE"
+
+
+@dataclass(frozen=True)
+class BossProfile:
+    max_hp:    int
+    speed:     float
+    phase_hp:  tuple[int, int]  # (phase2_threshold, phase3_threshold)
+
+
+BOSS_PROFILE = BossProfile(max_hp=8, speed=1.8, phase_hp=(5, 2))
+BOSS_IFRAMES = 20
+
+
+class Boss(PhysicsBody):
+    """The final adversary at the Volcano Altar.
+
+    Scales with remaining HP:
+      - CALM: patrols slowly.
+      - HUNT: chases the player at normal speed.
+      - RAGE: chases fast and jumps aggressively.
+    """
+    W, H = 60, 50
+
+    def __init__(self, x: int, y: int, profile: BossProfile = BOSS_PROFILE) -> None:
+        self.rect      = pygame.Rect(x - self.W // 2, y - self.H, self.W, self.H)
+        self.vel_y     = 0.0
+        self.on_ground = False
+        self.profile   = profile
+        self.max_hp    = profile.max_hp
+        self.hp        = profile.max_hp
+        self.facing    = -1
+        self.iframes   = 0
+        self.jump_cd   = 0
+        self._patrol   = PatrolStrategy()
+        self._chase    = ChaseStrategy()
+        self._jumper   = JumperStrategy()
+
+    @property
+    def alive(self) -> bool:
+        return self.hp > 0
+
+    @property
+    def speed(self) -> float:  # satisfies PatrolStrategy's "enemy.speed"
+        scale = {BossPhase.CALM: 0.8, BossPhase.HUNT: 1.2, BossPhase.RAGE: 1.5}
+        return self.profile.speed * scale[self.phase]
+
+    @property
+    def can_jump(self) -> bool:  # for parity with Enemy
+        return True
+
+    @property
+    def jump_cd_attr(self) -> int:
+        return self.jump_cd
+
+    @property
+    def phase(self) -> str:
+        p2, p3 = self.profile.phase_hp
+        if self.hp <= p3: return BossPhase.RAGE
+        if self.hp <= p2: return BossPhase.HUNT
+        return BossPhase.CALM
+
+    def _strategy_for_phase(self):
+        match self.phase:
+            case BossPhase.CALM: return self._patrol
+            case BossPhase.HUNT: return self._chase
+            case BossPhase.RAGE: return self._jumper
+
+    def sees(self, player: "Player") -> bool:  # boss always sees the player
+        return True
+
+    def _ground_ahead(self, direction: int, platforms: list) -> bool:
+        return super()._ground_ahead(direction, platforms)
+
+    def take_damage(self, amount: int = 1) -> bool:
+        if self.iframes > 0 or not self.alive:
+            return False
+        self.hp       = max(0, self.hp - amount)
+        self.iframes  = BOSS_IFRAMES
+        return True
+
+    def update(self, player: "Player", platforms: list) -> None:
+        if not self.alive:
+            return
+        strategy  = self._strategy_for_phase()
+        direction = strategy.decide(self, player, platforms)
+        self.facing = direction
+        self.rect.x += int(self.speed * direction)
+        self.rect.left  = max(0,        self.rect.left)
+        self.rect.right = min(SCREEN_W, self.rect.right)
+
+        if strategy.wants_jump(self, player, platforms, direction):
+            self.vel_y     = JUMP_VEL * 0.95
+            self.on_ground = False
+            self.jump_cd   = ENEMY_JUMP_COOLDOWN
+
+        self._apply_gravity(platforms)
+        if self.rect.bottom >= SCREEN_H:
+            self.rect.bottom = SCREEN_H
+            self.vel_y       = 0
+            self.on_ground   = True
+
+        if self.jump_cd > 0: self.jump_cd -= 1
+        if self.iframes > 0: self.iframes -= 1
+
+    def draw(self, surface: pygame.Surface) -> None:
+        if not self.alive:
+            return
+        # Tinted by phase
+        tint = {BossPhase.CALM: (200, 90, 60),
+                BossPhase.HUNT: (230, 60, 40),
+                BossPhase.RAGE: (255, 30, 30)}[self.phase]
+        # Flash white during i-frames
+        color = (255, 255, 255) if self.iframes > 0 else tint
+        img = SPRITES.get("enemy")
+        if img:
+            scaled = pygame.transform.scale(img, (self.W, self.H))
+            if self.facing == 1:
+                scaled = pygame.transform.flip(scaled, True, False)
+            surface.blit(scaled, self.rect)
+            # phase outline
+            pygame.draw.rect(surface, color, self.rect, 3, border_radius=6)
+        else:
+            draw_monster(surface, self.rect, color, 0)

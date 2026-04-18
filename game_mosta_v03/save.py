@@ -31,12 +31,13 @@ class PlayerSnapshot:
 
 @dataclass
 class SaveData:
-    version:   int
-    coord:     list[int]
-    visited:   list[list[int]]
-    collected: list[list[Any]]
-    score:     int
-    player:    PlayerSnapshot
+    version:       int
+    coord:         list[int]
+    visited:       list[list[int]]
+    collected:     list[list[Any]]
+    score:         int
+    player:        PlayerSnapshot
+    boss_defeated: bool = False
 
 
 def has_save(path: Path = SAVE_FILE) -> bool:
@@ -50,12 +51,13 @@ def delete_save(path: Path = SAVE_FILE) -> None:
 def save_game(gw, path: Path = SAVE_FILE) -> None:
     """Serialize the current GameWorld to JSON."""
     data = SaveData(
-        version   = SAVE_VERSION,
-        coord     = list(gw.coord),
-        visited   = sorted([list(c) for c in gw.visited]),
-        collected = [[list(coord), idx] for (coord, idx) in gw.collected],
-        score     = gw.score,
-        player    = PlayerSnapshot(
+        version       = SAVE_VERSION,
+        coord         = list(gw.coord),
+        visited       = sorted([list(c) for c in gw.visited]),
+        collected     = [[list(coord), idx] for (coord, idx) in gw.collected],
+        score         = gw.score,
+        boss_defeated = getattr(gw, "boss_defeated", False),
+        player        = PlayerSnapshot(
             hp        = gw.player.hp,
             x         = gw.player.rect.x,
             y         = gw.player.rect.y,
@@ -84,10 +86,11 @@ def load_game(path: Path = SAVE_FILE) -> dict | None:
 def apply_save(data: dict, gw) -> None:
     """Mutate ``gw`` in place to match a loaded save dict."""
     from items import Inventory
-    gw.coord     = tuple(data["coord"])
-    gw.visited   = {tuple(c) for c in data["visited"]}
-    gw.collected = {(tuple(c), idx) for (c, idx) in data["collected"]}
-    gw.score     = data["score"]
+    gw.coord         = tuple(data["coord"])
+    gw.visited       = {tuple(c) for c in data["visited"]}
+    gw.collected     = {(tuple(c), idx) for (c, idx) in data["collected"]}
+    gw.score         = data["score"]
+    gw.boss_defeated = data.get("boss_defeated", False)
 
     p = data["player"]
     gw.player.hp       = p["hp"]

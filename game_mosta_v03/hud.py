@@ -120,6 +120,53 @@ def draw_inventory(surface, font, inventory, player) -> None:
                                  True, (255, 210, 80)), (x0, info_y))
 
 
+def draw_boss_hp(surface, font, boss) -> None:
+    w    = 300
+    h    = 18
+    x0   = SCREEN_W // 2 - w // 2
+    y0   = 44
+    ratio = boss.hp / boss.max_hp
+    pygame.draw.rect(surface, (40, 10, 10),    (x0, y0, w, h), border_radius=3)
+    pygame.draw.rect(surface, (230, 40, 40),   (x0, y0, int(w * ratio), h),
+                     border_radius=3)
+    pygame.draw.rect(surface, (255, 230, 200), (x0, y0, w, h), 2, border_radius=3)
+    label = font.render(f"BOSS — {boss.phase}  ({boss.hp}/{boss.max_hp})",
+                        True, TEXT_COLOR)
+    surface.blit(label, (SCREEN_W // 2 - label.get_width() // 2, y0 + h + 4))
+
+
+_HELP_LINES = [
+    ("MOVEMENT",      "← →   or   A D"),
+    ("JUMP",          "↑  /  W"),
+    ("SHOOT",         "F"),
+    ("USE POTION",    "1  (heals 1 HP; max 3)"),
+    ("USE SPEED",     "2  (5s speed boost)"),
+    ("USE JUMP",      "3  (5s jump boost)"),
+    ("SAVE GAME",     "S  (reload with C)"),
+    ("TOGGLE HELP",   "H"),
+    ("QUIT",          "ESC on end screen"),
+    ("",              ""),
+    ("GOAL",          "Reach the Volcano Altar and defeat the Boss"),
+    ("ENEMIES",       "patrol / chase / jumper — red"),
+    ("BOSS PHASES",   "CALM → HUNT → RAGE as HP drops"),
+]
+
+
+def draw_help_overlay(surface, font) -> None:
+    _draw_overlay(surface, 200)
+    title = font.render("HELP", True, PORTAL_COLOR)
+    _blit_centered(surface, title, 80)
+    y = 130
+    for key, desc in _HELP_LINES:
+        if not key and not desc:
+            y += 10
+            continue
+        line = font.render(f"{key:<14}  {desc}", True, TEXT_COLOR)
+        _blit_centered(surface, line, y)
+        y += 26
+    _blit_centered(surface, font.render("H = close", True, HINT_COLOR), y + 10)
+
+
 def draw_save_toast(surface, font, timer: int) -> None:
     alpha = min(255, timer * 4)
     text  = font.render("Game saved — press C on welcome to continue", True, TEXT_COLOR)
@@ -142,7 +189,7 @@ def draw_welcome(surface, big_font, small_font, has_save: bool = False):
     _blit_centered(surface, small_font.render(
         "You have 3 HP — pick up potions to heal.", True, DIM_COLOR), 290)
     _blit_centered(surface, small_font.render(
-        "←→ move   ↑/W jump   F shoot   1=potion  2=speed  3=jump   S=save",
+        "←→ move   ↑/W jump   F shoot   1/2/3 items   S save   H help",
         True, HINT_COLOR), 340)
     start_line = "C = continue saved game   |   any other key = new game" if has_save \
         else "Press any key to begin"
@@ -169,6 +216,6 @@ def draw_game_over(surface, big_font, small_font, score, area_name,
 
 def draw_victory(surface, big_font, small_font, score):
     _draw_end_screen(surface, big_font, small_font,
-                     "YOU REACHED THE ALTAR!", PORTAL_COLOR,
+                     "YOU DEFEATED THE BOSS!", PORTAL_COLOR,
                      [(f"Final score: {score}",            TEXT_COLOR),
                       ("R = play again   |   ESC = quit", DIM_COLOR)])
