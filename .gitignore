@@ -29,8 +29,12 @@ htmlcov/
 .DS_Store
 *.swp
 
-# Claude local
-.claude/
+# Claude — commit project settings, hide personal overrides + auto-memory
+.claude/settings.local.json
+.claude/memory/
+
+# Local chat archive (stays on developer's machine)
+chat_history/
 
 # Game state
 save.json
