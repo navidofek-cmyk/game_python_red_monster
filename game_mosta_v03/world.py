@@ -119,7 +119,9 @@ def _items(*tuples) -> tuple[ItemSpawn, ...]:
     return tuple(ItemSpawn(x, y, ItemKind(k)) for (x, y, k) in tuples)
 
 
-AREAS: dict[Coord, AreaDef] = {
+AREAS: dict[Coord, AreaDef] = {}  # populated below; mutable (procgen can swap it)
+
+_CLASSIC_AREAS: dict[Coord, AreaDef] = {
     (0, 0): AreaDef(
         biome="snow", name="Snowy Peaks",
         platforms=_plats(
@@ -224,6 +226,22 @@ AREAS: dict[Coord, AreaDef] = {
         items=_items((470, 310, "speed")),
     ),
 }
+
+# Populate AREAS with the classic content by default.
+AREAS.update(_CLASSIC_AREAS)
+
+
+def use_classic_world() -> None:
+    """Reset AREAS to the hand-crafted layout."""
+    AREAS.clear()
+    AREAS.update(_CLASSIC_AREAS)
+
+
+def use_procgen_world(seed: int) -> None:
+    """Replace AREAS with a seed-generated set of areas."""
+    from procgen import generate_world
+    AREAS.clear()
+    AREAS.update(generate_world(seed))
 
 
 # --- Grid utilities -----------------------------------------------------------

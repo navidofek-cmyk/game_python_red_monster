@@ -177,24 +177,30 @@ def draw_save_toast(surface, font, timer: int) -> None:
     surface.blit(banner, (SCREEN_W // 2 - banner.get_width() // 2, SCREEN_H - 90))
 
 
-def draw_welcome(surface, big_font, small_font, has_save: bool = False):
+def draw_welcome(surface, big_font, small_font, has_save: bool = False,
+                 mode: str = "classic", seed: int | None = None):
     _draw_overlay(surface, 200)
-    _blit_centered(surface, big_font.render("Journey of Mosta", True, PLAYER_COLOR), 100)
+    _blit_centered(surface, big_font.render("Journey of Mosta", True, PLAYER_COLOR), 90)
     _blit_centered(surface, small_font.render(
-        "Your peaceful meadow is lost in shadow. Climb through swamp,", True, TEXT_COLOR), 190)
+        "Your peaceful meadow is lost in shadow. Climb through swamp,", True, TEXT_COLOR), 180)
     _blit_centered(surface, small_font.render(
-        "forest, caves and mountains to reach the Volcano Altar.", True, TEXT_COLOR), 220)
+        "forest, caves and mountains to reach the Volcano Altar.", True, TEXT_COLOR), 210)
     _blit_centered(surface, small_font.render(
-        "Beware the red monsters — they patrol, chase and jump.", True, DIM_COLOR), 260)
+        "Beware the red monsters — they patrol, chase and jump.", True, DIM_COLOR), 250)
     _blit_centered(surface, small_font.render(
-        "You have 3 HP — pick up potions to heal.", True, DIM_COLOR), 290)
+        "You have 3 HP — pick up potions to heal.", True, DIM_COLOR), 280)
     _blit_centered(surface, small_font.render(
         "←→ move   ↑/W jump   F shoot   1/2/3 items   S save   H help",
-        True, HINT_COLOR), 340)
+        True, HINT_COLOR), 320)
+    mode_line = f"Mode: {mode.upper()}"
+    if seed is not None:
+        mode_line += f"   seed {seed}"
+    mode_line += "   (P toggles procgen)"
+    _blit_centered(surface, small_font.render(mode_line, True, PORTAL_COLOR), 355)
     start_line = "C = continue saved game   |   any other key = new game" if has_save \
         else "Press any key to begin"
-    _blit_centered(surface, small_font.render(start_line, True, HINT_COLOR), 380)
-    preview = pygame.Rect(SCREEN_W // 2 - 20, 420, 40, 30)
+    _blit_centered(surface, small_font.render(start_line, True, HINT_COLOR), 385)
+    preview = pygame.Rect(SCREEN_W // 2 - 20, 425, 40, 30)
     img = SPRITES.get("player")
     if img:
         surface.blit(img, preview)

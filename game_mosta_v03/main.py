@@ -8,6 +8,7 @@ Python features demonstrated:
 """
 from __future__ import annotations
 
+import random
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -26,6 +27,7 @@ from items    import Item
 from world    import (
     AREAS, START_COORD, GOAL_COORD, Direction,
     neighbor, edge_direction, spawn_area,
+    use_classic_world, use_procgen_world,
 )
 from hud import (
     draw_hud, draw_welcome, draw_area_banner,
@@ -38,6 +40,21 @@ from save import (
 )
 
 AREA_BANNER_FRAMES = int(_FPS * 1.5)
+
+# Mode is set before a new game starts; keeps the current seed for display/save.
+_MODE_STATE = {"mode": "classic", "seed": None}
+
+
+def _set_mode(mode: str, seed: int | None = None) -> None:
+    if mode == "procgen":
+        if seed is None:
+            seed = random.randint(1, 10_000_000)
+        use_procgen_world(seed)
+        _MODE_STATE["mode"], _MODE_STATE["seed"] = "procgen", seed
+    else:
+        use_classic_world()
+        _MODE_STATE["mode"], _MODE_STATE["seed"] = "classic", None
+
 
 ITEM_HOTKEY_MAP: dict[int, ItemKind] = {
     pygame.K_1: ITEM_HOTKEYS[0],
@@ -226,7 +243,10 @@ def _handle_key(event, state: GameState, gw: GameWorld) -> tuple[GameState, Game
         case GameState.WELCOME:
             if event.key == pygame.K_c and (loaded := load_saved_world()) is not None:
                 return GameState.PLAYING, loaded
-            return GameState.PLAYING, gw
+            if event.key == pygame.K_p:
+                _set_mode("procgen" if _MODE_STATE["mode"] == "classic" else "classic")
+                return state, new_world()  # rebuild default world with new AREAS
+            return GameState.PLAYING, new_world()
         case GameState.PLAYING:
             if event.key in (pygame.K_UP, pygame.K_w):
                 gw.player.jump()
@@ -287,7 +307,9 @@ def _render(screen, gw: GameWorld, state: GameState,
             for enemy in gw.enemies:
                 enemy.draw(screen)
             gw.player.draw(screen)
-            draw_welcome(screen, big_font, small_font, has_save=has_save())
+            draw_welcome(screen, big_font, small_font,
+                         has_save=has_save(),
+                         mode=_MODE_STATE["mode"], seed=_MODE_STATE["seed"])
         case GameState.GAMEOVER:
             draw_game_over(screen, big_font, small_font,
                            gw.score, AREAS[gw.coord].name, has_save=has_save())
