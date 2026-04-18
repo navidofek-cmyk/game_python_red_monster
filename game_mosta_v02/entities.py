@@ -1,0 +1,318 @@
+"""Game entities: Player, Enemy, Platform, Portal, Projectile.
+
+Python features demonstrated:
+- ``typing.Protocol`` (structural typing) for the AI strategy interface
+- Strategy pattern with concrete classes (PatrolStrategy, ChaseStrategy, JumperStrategy)
+- ``@dataclass`` for the ``AIProfile`` configuration record
+- ``functools.cache`` as a module-level memoization decorator
+- ``@property`` for computed attributes
+- ``match``/``case`` in ``make_strategy``
+- Inheritance (``Player``, ``Enemy`` inherit ``PhysicsBody``)
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from functools import cache
+from typing import Protocol
+
+import pygame
+
+from constants import (
+    SCREEN_W, SCREEN_H, GRAVITY, JUMP_VEL, PLAYER_SPEED,
+    BULLET_SPEED, SHOOT_COOLDOWN,
+    ENEMY_SIGHT_RANGE, ENEMY_JUMP_COOLDOWN,
+    PLATFORM_COLOR, PLATFORM_SHINE,
+    BULLET_COLOR, BULLET_INNER,
+    PLAYER_COLOR, ENEMY_COLOR, PORTAL_COLOR, PORTAL_INNER, BLACK,
+    AiType,
+)
+from sprites import SPRITES, draw_monster
+
+
+# --- Physics base -------------------------------------------------------------
+class PhysicsBody:
+    """Mixin providing gravity + platform collision. Subclasses own a ``rect``."""
+
+    def _apply_gravity(self, platforms: list) -> None:
+        self.vel_y    += GRAVITY
+        self.rect.y   += int(self.vel_y)
+        self.on_ground = False
+        for plat in platforms:
+            if self.rect.colliderect(plat.rect):
+                if self.vel_y > 0:
+                    self.rect.bottom = plat.rect.top
+                    self.vel_y       = 0
+                    self.on_ground   = True
+                elif self.vel_y < 0:
+                    self.rect.top = plat.rect.bottom
+                    self.vel_y    = 1
+
+    def _ground_ahead(self, direction: int, platforms: list) -> bool:
+        probe_x = self.rect.right + 4 if direction > 0 else self.rect.left - 4
+        probe_y = self.rect.bottom + 4
+        return any(plat.rect.collidepoint(probe_x, probe_y) for plat in platforms)
+
+
+# --- World objects ------------------------------------------------------------
+class Platform:
+    def __init__(self, x: int, y: int, w: int, h: int = 14,
+                 color=PLATFORM_COLOR, shine=PLATFORM_SHINE) -> None:
+        self.rect  = pygame.Rect(x, y, w, h)
+        self.color = color
+        self.shine = shine
+
+    def draw(self, surface: pygame.Surface) -> None:
+        pygame.draw.rect(surface, self.color, self.rect)
+        pygame.draw.line(surface, self.shine, self.rect.topleft, self.rect.topright, 2)
+
+
+class Portal:
+    W, H = 30, 50
+
+    def __init__(self, x: int, y: int) -> None:
+        self.rect  = pygame.Rect(x - self.W // 2, y - self.H, self.W, self.H)
+        self.timer = 0
+        self._font = pygame.font.SysFont("monospace", 11, bold=True)
+
+    def update(self) -> None:
+        self.timer += 1
+
+    def draw(self, surface: pygame.Surface) -> None:
+        pulse  = abs((self.timer % 60) - 30) / 30
+        factor = 0.6 + 0.4 * pulse
+        color  = tuple(int(c * factor) for c in PORTAL_COLOR)
+        pygame.draw.rect(surface, color,        self.rect,                 border_radius=4)
+        pygame.draw.rect(surface, PORTAL_INNER, self.rect.inflate(-8, -8), border_radius=2)
+        label = self._font.render("GOAL", True, BLACK)
+        surface.blit(label, (self.rect.centerx - label.get_width()  // 2,
+                              self.rect.centery - label.get_height() // 2))
+
+
+class Projectile:
+    def __init__(self, x: int, y: int, direction: int) -> None:
+        self.rect      = pygame.Rect(x, y, 10, 5)
+        self.direction = direction
+
+    def update(self) -> None:
+        self.rect.x += BULLET_SPEED * self.direction
+
+    def draw(self, surface: pygame.Surface) -> None:
+        pygame.draw.rect(surface, BULLET_COLOR, self.rect)
+        pygame.draw.rect(surface, BULLET_INNER, self.rect.inflate(-4, -2))
+
+    def off_screen(self) -> bool:
+        return self.rect.right < 0 or self.rect.left > SCREEN_W
+
+
+# --- Player -------------------------------------------------------------------
+@cache
+def _flipped_player_sprite(facing: int) -> pygame.Surface | None:
+    """Memoized: only flip the sprite once per facing direction."""
+    base = SPRITES.get("player")
+    if base is None:
+        return None
+    return pygame.transform.flip(base, facing == -1, False)
+
+
+class Player(PhysicsBody):
+    W, H = 40, 30
+
+    def __init__(self, x: int, y: int) -> None:
+        self.rect       = pygame.Rect(x, y, self.W, self.H)
+        self.vel_y      = 0.0
+        self.on_ground  = False
+        self.facing     = 1
+        self.projectiles: list[Projectile] = []
+        self.last_shot  = -SHOOT_COOLDOWN
+        self.anim_frame = 0
+        self.anim_timer = 0
+
+    @property
+    def center(self) -> tuple[int, int]:
+        return self.rect.center
+
+    def update(self, platforms: list, allow_edges: dict[str, bool]) -> None:
+        keys = pygame.key.get_pressed()
+        dx   = 0
+        if keys[pygame.K_LEFT]  or keys[pygame.K_a]: dx = -PLAYER_SPEED; self.facing = -1
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]: dx =  PLAYER_SPEED; self.facing =  1
+
+        self.rect.x += dx
+        if not allow_edges.get("left",  False):
+            self.rect.left  = max(0, self.rect.left)
+        if not allow_edges.get("right", False):
+            self.rect.right = min(SCREEN_W, self.rect.right)
+
+        self._apply_gravity(platforms)
+
+        if not allow_edges.get("down", False) and self.rect.bottom >= SCREEN_H:
+            self.rect.bottom = SCREEN_H
+            self.vel_y       = 0
+            self.on_ground   = True
+
+        self.anim_timer += 1
+        if dx != 0 and self.anim_timer % 12 == 0:
+            self.anim_frame = (self.anim_frame + 1) % 2
+
+        for p in self.projectiles:
+            p.update()
+        self.projectiles = [p for p in self.projectiles if not p.off_screen()]
+
+    def jump(self) -> None:
+        if self.on_ground:
+            self.vel_y     = JUMP_VEL
+            self.on_ground = False
+
+    def shoot(self) -> None:
+        now = pygame.time.get_ticks()
+        if now - self.last_shot >= SHOOT_COOLDOWN:
+            bx = self.rect.right if self.facing == 1 else self.rect.left - 10
+            self.projectiles.append(Projectile(bx, self.rect.centery - 3, self.facing))
+            self.last_shot = now
+
+    def draw(self, surface: pygame.Surface) -> None:
+        img = _flipped_player_sprite(self.facing)
+        if img:
+            surface.blit(img, self.rect)
+        else:
+            draw_monster(surface, self.rect, PLAYER_COLOR, self.anim_frame)
+        for p in self.projectiles:
+            p.draw(surface)
+
+
+# --- Enemy AI strategies ------------------------------------------------------
+@dataclass(frozen=True)
+class AIProfile:
+    speed:     float
+    can_jump:  bool
+    chases:    bool
+
+
+AI_PROFILES: dict[str, AIProfile] = {
+    AiType.PATROL.value: AIProfile(speed=1.6, can_jump=False, chases=False),
+    AiType.CHASE.value:  AIProfile(speed=2.2, can_jump=False, chases=True),
+    AiType.JUMPER.value: AIProfile(speed=2.4, can_jump=True,  chases=True),
+}
+
+
+class EnemyAI(Protocol):
+    """Structural interface for AI behaviors (Protocol = 'duck-typed interface')."""
+    def decide(self, enemy: "Enemy", player: "Player", platforms: list) -> int:
+        """Return +1 / -1 walking direction. Side effect: may set enemy.facing."""
+        ...
+
+    def wants_jump(self, enemy: "Enemy", player: "Player",
+                   platforms: list, direction: int) -> bool:
+        ...
+
+
+class PatrolStrategy:
+    def decide(self, enemy, player, platforms):
+        if enemy.on_ground and not enemy._ground_ahead(enemy.facing, platforms):
+            enemy.facing = -enemy.facing
+        if enemy.rect.left  <= 0        and enemy.facing < 0: enemy.facing = 1
+        if enemy.rect.right >= SCREEN_W and enemy.facing > 0: enemy.facing = -1
+        return enemy.facing
+
+    def wants_jump(self, enemy, player, platforms, direction):
+        return False
+
+
+class ChaseStrategy(PatrolStrategy):
+    def decide(self, enemy, player, platforms):
+        if enemy.sees(player):
+            enemy.facing = 1 if player.rect.centerx > enemy.rect.centerx else -1
+            return enemy.facing
+        return super().decide(enemy, player, platforms)
+
+
+class JumperStrategy(ChaseStrategy):
+    def wants_jump(self, enemy, player, platforms, direction):
+        if not enemy.on_ground or enemy.jump_cd > 0:
+            return False
+        player_above = player.rect.bottom < enemy.rect.top - 10
+        gap_ahead    = not enemy._ground_ahead(direction, platforms)
+        return player_above or gap_ahead
+
+
+def make_strategy(ai_type: str) -> EnemyAI:
+    """Factory: pick a strategy. Shows match/case for dispatch."""
+    match ai_type:
+        case AiType.PATROL.value: return PatrolStrategy()
+        case AiType.CHASE.value:  return ChaseStrategy()
+        case AiType.JUMPER.value: return JumperStrategy()
+        case _:                   return PatrolStrategy()
+
+
+# --- Enemy --------------------------------------------------------------------
+class Enemy(PhysicsBody):
+    W, H = 36, 28
+
+    def __init__(self, x: int, y: int, ai_type: str = "patrol") -> None:
+        self.rect       = pygame.Rect(x, y, self.W, self.H)
+        self.vel_y      = 0.0
+        self.on_ground  = False
+        self.alive      = True
+        self.ai_type    = ai_type
+        self.profile    = AI_PROFILES.get(ai_type, AI_PROFILES["patrol"])
+        self.strategy   = make_strategy(ai_type)
+        self.facing     = 1
+        self.jump_cd    = 0
+        self.anim_frame = 0
+        self.anim_timer = 0
+
+    @property
+    def speed(self) -> float:
+        return self.profile.speed
+
+    @property
+    def can_jump(self) -> bool:
+        return self.profile.can_jump
+
+    @property
+    def chase(self) -> bool:
+        return self.profile.chases
+
+    def sees(self, player: "Player") -> bool:
+        dx = player.rect.centerx - self.rect.centerx
+        dy = player.rect.centery - self.rect.centery
+        return abs(dx) < ENEMY_SIGHT_RANGE and abs(dy) < ENEMY_SIGHT_RANGE
+
+    _sees_player = sees  # legacy alias used by older tests
+
+    def update(self, player: "Player", platforms: list) -> None:
+        if not self.alive:
+            return
+        direction = self.strategy.decide(self, player, platforms)
+        self.facing = direction
+        self.rect.x += int(self.speed * direction)
+        self.rect.left  = max(0,        self.rect.left)
+        self.rect.right = min(SCREEN_W, self.rect.right)
+
+        if self.strategy.wants_jump(self, player, platforms, direction):
+            self.vel_y     = JUMP_VEL * 0.85
+            self.on_ground = False
+            self.jump_cd   = ENEMY_JUMP_COOLDOWN
+
+        self._apply_gravity(platforms)
+
+        if self.rect.bottom >= SCREEN_H:
+            self.rect.bottom = SCREEN_H
+            self.vel_y       = 0
+            self.on_ground   = True
+
+        if self.jump_cd > 0:
+            self.jump_cd -= 1
+
+        self.anim_timer += 1
+        if self.anim_timer % 10 == 0:
+            self.anim_frame = (self.anim_frame + 1) % 2
+
+    def draw(self, surface: pygame.Surface) -> None:
+        if not self.alive:
+            return
+        img = SPRITES.get("enemy")
+        if img:
+            surface.blit(img, self.rect)
+        else:
+            draw_monster(surface, self.rect, ENEMY_COLOR, self.anim_frame)
