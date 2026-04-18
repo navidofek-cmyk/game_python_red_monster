@@ -34,3 +34,4 @@ htmlcov/
 
 # Game state
 save.json
+custom_area.json
