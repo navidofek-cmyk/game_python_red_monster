@@ -1,10 +1,11 @@
 [project]
 name = "game-mosta-v04-terminal"
 version = "0.4.0"
-description = "Red Monster — terminal (curses) version, stdlib-only"
+description = "Red Monster — terminal (curses) version"
 requires-python = ">=3.11"
-# No runtime dependencies — uses only the Python standard library.
-dependencies = []
+dependencies = [
+    "pillow>=10",
+]
 
 [project.optional-dependencies]
 test = ["pytest>=8"]

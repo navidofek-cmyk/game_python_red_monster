@@ -15,12 +15,15 @@ import curses
 from constants import GRID_H, GRID_W, HUD_H, TICK_MS
 from engine import new_game, tick
 from renderer import handle_key, render_area, render_hud, render_help
+from sprite import load_sprite
 
 
 def _main(stdscr) -> None:
     curses.curs_set(0)
     stdscr.nodelay(True)
     stdscr.timeout(TICK_MS)
+    curses.start_color()
+    curses.use_default_colors()   # -1 = terminal background (transparent)
 
     h, w = stdscr.getmaxyx()
     if h < GRID_H + HUD_H or w < GRID_W:
@@ -51,6 +54,7 @@ def _main(stdscr) -> None:
 
 
 def main() -> None:
+    load_sprite()   # load PNG before curses starts
     try:
         curses.wrapper(_main)
     except KeyboardInterrupt:

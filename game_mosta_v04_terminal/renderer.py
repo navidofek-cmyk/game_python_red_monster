@@ -6,6 +6,7 @@ import curses
 from constants import GRID_H, GRID_W, MAX_HP, Tile
 from engine import Game, jump, move_player, new_game, shoot, use_item
 from save import load_game, save_game
+from sprite import render_sprite, sprite_height
 
 HELP_LINES = [
     "MOVE: arrows / hjkl   JUMP: space/w/k   SHOOT: f",
@@ -63,7 +64,9 @@ def render_area(stdscr, game: Game) -> None:
 
 
 def render_hud(stdscr, game: Game) -> None:
-    y0 = GRID_H
+    y0      = GRID_H
+    sp_w    = 13                  # sprite column width (SPRITE_W + 1 gap)
+    txt_w   = GRID_W - sp_w
     hp_bar  = "".join("♥" if i < game.player.hp else "·" for i in range(MAX_HP))
     inv     = game.player.inventory
     inv_line = (f"1:{inv.get('potion',0)}  2:{inv.get('speed',0)}  "
@@ -74,15 +77,17 @@ def render_hud(stdscr, game: Game) -> None:
     coord_label = f"[{game.coord[0]},{game.coord[1]}] {game.world[game.coord].name}"
     try:
         stdscr.addstr(y0,     0, "─" * GRID_W)
-        stdscr.addstr(y0 + 1, 0, f"HP {hp_bar}  Score {game.score:<4}  {coord_label}")
-        stdscr.addstr(y0 + 2, 0, f"Items {inv_line}   {' '.join(boost):<20}")
+        stdscr.addstr(y0 + 1, 0, f"HP {hp_bar}  Score {game.score:<4}  {coord_label[:txt_w - 20]}")
+        stdscr.addstr(y0 + 2, 0, f"Items {inv_line}   {' '.join(boost):<15}")
         if game.boss and game.boss.alive:
             stdscr.addstr(y0 + 3, 0,
                           f"BOSS [{game.boss.phase}] {game.boss.hp}/{game.boss.max_hp}")
         else:
-            stdscr.addstr(y0 + 3, 0, f"Status: {game.status[:GRID_W - 10]}")
+            stdscr.addstr(y0 + 3, 0, f"Status: {game.status[:txt_w - 10]}")
     except curses.error:
         pass
+    # Sprite in the right corner of the HUD
+    render_sprite(stdscr, y0 + 1, GRID_W - sp_w)
 
 
 def render_help(stdscr) -> None:
