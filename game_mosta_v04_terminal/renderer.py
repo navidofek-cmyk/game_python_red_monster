@@ -6,19 +6,21 @@ import curses
 from constants import GRID_H, GRID_W, MAX_HP, Tile
 from engine import Game, jump, move_player, new_game, shoot, use_item
 from save import load_game, save_game
-from sprite import render_sprite, sprite_height
+from sprite import render_game_sprite, render_hud_sprite
 
 HELP_LINES = [
     "MOVE: arrows / hjkl   JUMP: space/w/k   SHOOT: f",
     "ITEMS: 1 potion  2 speed  3 jump      S save  L load",
     "HELP: H       QUIT: q                  NEW: n",
     "GOAL: reach the Volcano Summit altar after defeating the boss.",
-    "Enemies: P patrol, C chase, J jumper. Boss: $",
+    "Enemies: blue patrol, red chase, green jumper. Boss: purple $",
 ]
 
 
 def render_area(stdscr, game: Game) -> None:
     area = game.world[game.coord]
+
+    # --- background grid: platforms, decor, items, bullets ---
     grid = [[Tile.EMPTY.value for _ in range(GRID_W)] for _ in range(GRID_H)]
 
     for (x, y, w) in area.platforms:
@@ -38,37 +40,39 @@ def render_area(stdscr, game: Game) -> None:
                                        "speed":  Tile.SPEED,
                                        "jump":   Tile.JUMP}[it["kind"]].value
 
-    for e in area.enemies:
-        if e["alive"] and 0 <= e["x"] < GRID_W and 0 <= e["y"] < GRID_H:
-            grid[e["y"]][e["x"]] = {"patrol": Tile.PATROL,
-                                     "chase":  Tile.CHASE,
-                                     "jumper": Tile.JUMPER}[e["ai"]].value
-
-    if game.boss and game.boss.alive:
-        bx, by = game.boss.x, game.boss.y
-        if 0 <= bx < GRID_W and 0 <= by < GRID_H:
-            grid[by][bx] = Tile.BOSS.value
-
     for (bx, by, _) in game.player.bullets:
         if 0 <= bx < GRID_W and 0 <= by < GRID_H:
             grid[by][bx] = Tile.BULLET.value
 
-    if 0 <= game.player.x < GRID_W and 0 <= game.player.y < GRID_H:
-        grid[game.player.y][game.player.x] = Tile.PLAYER.value
-
-    if game.player.iframes > 0 and (game.player.iframes % 2 == 0):
-        grid[game.player.y][game.player.x] = Tile.EMPTY.value
-
     for y, row in enumerate(grid):
         stdscr.addstr(y, 0, "".join(row))
 
+    # --- sprites overlaid on top of the background ---
+
+    # Enemies (draw before player so player appears in front)
+    for e in area.enemies:
+        if e["alive"] and 0 <= e["x"] < GRID_W and 1 <= e["y"] < GRID_H:
+            render_game_sprite(stdscr, e["ai"], e["y"] - 1, e["x"])
+
+    # Boss
+    if game.boss and game.boss.alive:
+        bx, by = game.boss.x, game.boss.y
+        if 0 <= bx < GRID_W and 1 <= by < GRID_H:
+            render_game_sprite(stdscr, "boss", by - 1, bx)
+
+    # Player (on top of everything)
+    px, py = game.player.x, game.player.y
+    if 0 <= px < GRID_W and 1 <= py < GRID_H:
+        flicker = game.player.iframes > 0 and (game.player.iframes % 2 == 0)
+        render_game_sprite(stdscr, "player", py - 1, px, flicker)
+
 
 def render_hud(stdscr, game: Game) -> None:
-    y0      = GRID_H
-    sp_w    = 13                  # sprite column width (SPRITE_W + 1 gap)
-    txt_w   = GRID_W - sp_w
-    hp_bar  = "".join("♥" if i < game.player.hp else "·" for i in range(MAX_HP))
-    inv     = game.player.inventory
+    y0     = GRID_H
+    sp_w   = 13
+    txt_w  = GRID_W - sp_w
+    hp_bar = "".join("♥" if i < game.player.hp else "·" for i in range(MAX_HP))
+    inv    = game.player.inventory
     inv_line = (f"1:{inv.get('potion',0)}  2:{inv.get('speed',0)}  "
                 f"3:{inv.get('jump',0)}")
     boost = []
@@ -77,7 +81,8 @@ def render_hud(stdscr, game: Game) -> None:
     coord_label = f"[{game.coord[0]},{game.coord[1]}] {game.world[game.coord].name}"
     try:
         stdscr.addstr(y0,     0, "─" * GRID_W)
-        stdscr.addstr(y0 + 1, 0, f"HP {hp_bar}  Score {game.score:<4}  {coord_label[:txt_w - 20]}")
+        stdscr.addstr(y0 + 1, 0, f"HP {hp_bar}  Score {game.score:<4}  "
+                                  f"{coord_label[:txt_w - 20]}")
         stdscr.addstr(y0 + 2, 0, f"Items {inv_line}   {' '.join(boost):<15}")
         if game.boss and game.boss.alive:
             stdscr.addstr(y0 + 3, 0,
@@ -86,8 +91,7 @@ def render_hud(stdscr, game: Game) -> None:
             stdscr.addstr(y0 + 3, 0, f"Status: {game.status[:txt_w - 10]}")
     except curses.error:
         pass
-    # Sprite in the right corner of the HUD
-    render_sprite(stdscr, y0 + 1, GRID_W - sp_w)
+    render_hud_sprite(stdscr, y0 + 1, GRID_W - sp_w)
 
 
 def render_help(stdscr) -> None:

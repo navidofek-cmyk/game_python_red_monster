@@ -15,7 +15,7 @@ import curses
 from constants import GRID_H, GRID_W, HUD_H, TICK_MS
 from engine import new_game, tick
 from renderer import handle_key, render_area, render_hud, render_help
-from sprite import load_sprite
+from sprite import load_sprites
 
 
 def _main(stdscr) -> None:
@@ -54,7 +54,7 @@ def _main(stdscr) -> None:
 
 
 def main() -> None:
-    load_sprite()   # load PNG before curses starts
+    load_sprites()   # load PNG before curses starts
     try:
         curses.wrapper(_main)
     except KeyboardInterrupt:
